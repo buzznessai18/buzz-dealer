@@ -2,14 +2,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { LeadChart, OutreachChart } from "@/components/dashboard/charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PageHeader, Stat } from "@/components/ui/feedback";
-import { requireReady } from "@/lib/auth/session";
-import { loadDashboard } from "@/lib/data/dashboard";
+import { PageHeader, PageLoading, Stat } from "@/components/ui/feedback";
+import { withWorkspaceData } from "@/lib/auth/session";
+import { aggregateDashboard } from "@/lib/dashboard-metrics";
+import { fetchDashboard } from "@/lib/data/dashboard";
 import { currency, titleCase } from "@/lib/utils";
 
 export default function OverviewPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading overview…</p>}>
+    <Suspense fallback={<PageLoading label="Loading overview" />}>
       <Overview searchParams={searchParams} />
     </Suspense>
   );
@@ -17,10 +18,10 @@ export default function OverviewPage({ searchParams }: { searchParams: Promise<R
 
 async function Overview({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const params = await searchParams;
-  const session = await requireReady();
-  const result = await loadDashboard(session, params.range, params.from, params.to);
+  const { session, data: result } = await withWorkspaceData((supabase, workspaceId) => fetchDashboard(supabase, workspaceId, params.range, params.from, params.to));
   if ("error" in result) return <p className="text-sm text-red-600">{result.error}</p>;
-  const { model, range } = result;
+  const model = aggregateDashboard({ ...result.input, currency: session.settings.currency });
+  const range = result.range;
   const metrics = [
     ["Discovered leads", model.discovered, "Created in the selected period"],
     ["Qualified leads", model.qualified, "Qualified or later, created in the period"],

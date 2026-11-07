@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { requireReady } from "@/lib/auth/session";
-import { PageHeader } from "@/components/ui/feedback";
+import { PageHeader, PageLoading } from "@/components/ui/feedback";
 
 export default function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Searching…</p>}>
+    <Suspense fallback={<PageLoading label="Searching" />}>
       <Search searchParams={searchParams} />
     </Suspense>
   );

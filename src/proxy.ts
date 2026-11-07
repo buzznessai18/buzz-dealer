@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { userFromAuth } from "@/lib/auth/user";
 import { isSupabaseConfigured } from "@/lib/env";
 
 const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/setup"]);
@@ -37,8 +38,7 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getUser();
-  const user = data.user;
+  const user = await userFromAuth(supabase);
   if (!user && !isPublic(pathname) && !pathname.startsWith("/api/")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

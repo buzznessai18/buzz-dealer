@@ -6,8 +6,10 @@ import { Input, Textarea, Select } from "@/components/ui/input";
 
 export default async function SettingsPage() {
   const session = await requireReady();
-  const { data: members } = await session.supabase.from("workspace_members").select("id, role, user:profiles(full_name, email)").eq("workspace_id", session.workspaceId);
-  const { data: usage } = await session.supabase.from("ai_usage_logs").select("input_tokens, output_tokens, estimated_cost").eq("workspace_id", session.workspaceId);
+  const [{ data: members }, { data: usage }] = await Promise.all([
+    session.supabase.from("workspace_members").select("id, role, user:profiles(full_name, email)").eq("workspace_id", session.workspaceId),
+    session.supabase.from("ai_usage_logs").select("input_tokens, output_tokens, estimated_cost").eq("workspace_id", session.workspaceId),
+  ]);
   const tokens = (usage ?? []).reduce((sum, row) => sum + Number(row.input_tokens || 0) + Number(row.output_tokens || 0), 0);
   const compliance = session.settings.compliance;
   return (

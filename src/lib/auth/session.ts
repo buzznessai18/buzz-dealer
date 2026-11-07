@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { userFromAuth } from "@/lib/auth/user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -75,19 +76,29 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
   await connection();
   if (!isSupabaseConfigured()) return { status: "unconfigured" };
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return { status: "anonymous" };
-  const user = data.user;
-  const { data: memberships, error: memberError } = await supabase
-    .from("workspace_members")
-    .select("role, workspace:workspaces(id, name, slug, is_demo)")
-    .eq("user_id", user.id);
+  const user = await userFromAuth(supabase);
+  if (!user) return { status: "anonymous" };
+  const [{ data: memberships, error: memberError }, { data: profile }] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("role, workspace:workspaces(id, name, slug, is_demo, company_profiles(*), company_settings(*))")
+      .eq("user_id", user.id),
+    supabase.from("profiles").select("full_name, avatar_url, email").eq("id", user.id).maybeSingle(),
+  ]);
   if (memberError) return { status: "error", message: memberError.message };
   const workspaces = (memberships ?? [])
     .map((row) => {
-      const workspace = Array.isArray(row.workspace) ? row.workspace[0] : row.workspace;
+      const workspace = one(row.workspace);
       if (!workspace) return null;
-      return { id: workspace.id as string, name: workspace.name as string, slug: workspace.slug as string, role: row.role as WorkspaceRole, isDemo: Boolean(workspace.is_demo) };
+      return {
+        id: workspace.id as string,
+        name: workspace.name as string,
+        slug: workspace.slug as string,
+        role: row.role as WorkspaceRole,
+        isDemo: Boolean(workspace.is_demo),
+        company: one(workspace.company_profiles),
+        settings: one(workspace.company_settings),
+      };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
   if (!workspaces.length) {
@@ -96,13 +107,10 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
   const cookieStore = await cookies();
   const requested = cookieStore.get("gp_workspace")?.value;
   const current = workspaces.find((item) => item.id === requested) ?? workspaces[0];
-  const [{ data: company, error: companyError }, { data: settings, error: settingsError }, { data: profile }] = await Promise.all([
-    supabase.from("company_profiles").select("*").eq("workspace_id", current.id).maybeSingle(),
-    supabase.from("company_settings").select("*").eq("workspace_id", current.id).maybeSingle(),
-    supabase.from("profiles").select("full_name, avatar_url, email").eq("id", user.id).maybeSingle(),
-  ]);
-  if (companyError || settingsError || !company || !settings) {
-    return { status: "error", message: companyError?.message || settingsError?.message || "Workspace profile is missing. Apply the database migration." };
+  const company = current.company;
+  const settings = current.settings;
+  if (!company || !settings) {
+    return { status: "error", message: "Workspace profile is missing. Apply the database migration." };
   }
   return {
     status: "ready",
@@ -154,6 +162,21 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
   };
 });
 
+export async function withWorkspaceData<T>(load: (supabase: SupabaseClient, workspaceId: string) => Promise<T>) {
+  const sessionPromise = requireReady();
+  const earlyPromise = (async () => {
+    const cookieStore = await cookies();
+    const workspaceId = cookieStore.get("gp_workspace")?.value;
+    if (!workspaceId) return null;
+    const supabase = await createClient();
+    return { workspaceId, data: await load(supabase, workspaceId) };
+  })();
+  const session = await sessionPromise;
+  const early = await earlyPromise;
+  if (early && early.workspaceId === session.workspaceId) return { session, data: early.data };
+  return { session, data: await load(session.supabase, session.workspaceId) };
+}
+
 export async function requireReady() {
   const state = await getSessionState();
   if (state.status === "unconfigured") redirect("/setup");
@@ -168,6 +191,11 @@ export async function requireWriter() {
   const session = await requireReady();
   if (session.role === "viewer") throw new Error("Viewers can review records but cannot change them.");
   return session;
+}
+
+function one<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
 }
 
 export async function setWorkspaceCookie(workspaceId: string) {

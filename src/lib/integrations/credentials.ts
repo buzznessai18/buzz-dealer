@@ -68,10 +68,43 @@ export type IntegrationRow = {
 
 export async function resolveProvider(admin: SupabaseClient | null, workspaceId: string, provider: ProviderKey) {
   const stored = await readIntegration(admin, workspaceId, provider);
+  return describeProvider(provider, stored.secret, stored.row);
+}
+
+export async function listResolvedProviders(admin: SupabaseClient | null, workspaceId: string, providers: ProviderKey[]) {
+  const secrets = new Map<string, SecretMap | null>();
+  const rows = new Map<string, IntegrationRow>();
+  if (admin) {
+    const [{ data: secretRows }, { data: integrationRows }] = await Promise.all([
+      admin.from("integration_secrets").select("provider, secret_value").eq("workspace_id", workspaceId),
+      admin.from("integrations").select("provider, status, enabled, public_config, last_error, last_tested_at, usage").eq("workspace_id", workspaceId),
+    ]);
+    for (const row of integrationRows ?? []) rows.set(row.provider, row as IntegrationRow);
+    for (const secretRow of secretRows ?? []) {
+      if (!secretRow.secret_value) continue;
+      try {
+        secrets.set(secretRow.provider, JSON.parse(decryptSecret(secretRow.secret_value)) as SecretMap);
+      } catch (error) {
+        const existing = rows.get(secretRow.provider);
+        rows.set(secretRow.provider, {
+          provider: secretRow.provider,
+          status: "error",
+          enabled: existing?.enabled ?? false,
+          public_config: existing?.public_config ?? {},
+          last_error: error instanceof Error ? error.message : "Secret could not be read.",
+          last_tested_at: existing?.last_tested_at ?? null,
+          usage: existing?.usage ?? {},
+        });
+      }
+    }
+  }
+  return providers.map((provider) => describeProvider(provider, secrets.get(provider) ?? null, rows.get(provider) ?? null));
+}
+
+function describeProvider(provider: ProviderKey, secret: SecretMap | null, row: IntegrationRow | null) {
   const envValues = envFor(provider);
-  const merged = { ...envValues, ...(stored.secret ?? {}) };
-  const disabled = stored.row?.enabled === false;
-  const required = missingEnv(provider);
+  const merged = { ...envValues, ...(secret ?? {}) };
+  const disabled = row?.enabled === false;
   const hasValues = provider === "gmail"
     ? Boolean(merged.clientId && merged.clientSecret && (merged.refreshToken || envConfigured("gmail")))
     : Object.keys(provider === "google_search" ? { apiKey: merged.apiKey, cx: merged.cx } : { apiKey: merged.apiKey }).every((key) => merged[key]);
@@ -80,10 +113,10 @@ export async function resolveProvider(admin: SupabaseClient | null, workspaceId:
     provider,
     configured,
     disabled,
-    source: stored.secret ? "workspace" : envValues.apiKey || envValues.clientId ? "environment" : "missing",
+    source: secret ? "workspace" : envValues.apiKey || envValues.clientId ? "environment" : "missing",
     values: configured ? merged : {},
-    row: stored.row,
-    missing: stored.secret ? [] : required,
+    row,
+    missing: secret ? [] : missingEnv(provider),
   };
 }
 

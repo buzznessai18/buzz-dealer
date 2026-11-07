@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { requireReady } from "@/lib/auth/session";
-import { loadDashboard } from "@/lib/data/dashboard";
-import { PageHeader, Stat } from "@/components/ui/feedback";
+import { withWorkspaceData } from "@/lib/auth/session";
+import { aggregateDashboard } from "@/lib/dashboard-metrics";
+import { fetchDashboard } from "@/lib/data/dashboard";
+import { PageHeader, PageLoading, Stat } from "@/components/ui/feedback";
 
 export default function AnalyticsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading analytics…</p>}>
+    <Suspense fallback={<PageLoading label="Loading analytics" />}>
       <Analytics searchParams={searchParams} />
     </Suspense>
   );
@@ -14,13 +15,16 @@ export default function AnalyticsPage({ searchParams }: { searchParams: Promise<
 
 async function Analytics({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const params = await searchParams;
-  const session = await requireReady();
-  const result = await loadDashboard(session, params.range || "90d");
+  const { session, data } = await withWorkspaceData((supabase, workspaceId) => Promise.all([
+    fetchDashboard(supabase, workspaceId, params.range || "90d"),
+    supabase.from("companies").select("industry, country").eq("workspace_id", workspaceId),
+  ]));
+  const [result, companiesResult] = data;
   if ("error" in result) return <p className="text-sm text-red-600">{result.error}</p>;
-  const { data: companies } = await session.supabase.from("companies").select("industry, country").eq("workspace_id", session.workspaceId);
+  const companies = companiesResult.data;
+  const model = aggregateDashboard({ ...result.input, currency: session.settings.currency });
   const industries = countBy(companies ?? [], "industry");
   const countries = countBy(companies ?? [], "country");
-  const model = result.model;
   return (
     <div className="space-y-6">
       <PageHeader title="Analytics & Reports" description="Figures are aggregated from workspace records for the last 90 days unless noted.">

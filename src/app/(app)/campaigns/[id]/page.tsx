@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import { CampaignDetail } from "@/app/(app)/campaigns/page";
+import { PageLoading } from "@/components/ui/feedback";
 
 export default function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading campaign…</p>}>
+    <Suspense fallback={<PageLoading label="Loading campaign" />}>
       <Campaign params={params} />
     </Suspense>
   );

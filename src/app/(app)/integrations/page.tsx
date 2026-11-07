@@ -1,6 +1,7 @@
 import { requireReady } from "@/lib/auth/session";
 import { INTEGRATION_CATALOG } from "@/lib/constants";
-import { resolveProvider } from "@/lib/integrations/credentials";
+import { listResolvedProviders } from "@/lib/integrations/credentials";
+import type { ProviderKey } from "@/lib/env";
 import { PageHeader } from "@/components/ui/feedback";
 import { saveIntegration, testIntegration } from "@/server/actions";
 import { Button } from "@/components/ui/button";
@@ -20,11 +21,13 @@ const FIELDS: Record<string, Array<{ name: string; label: string }>> = {
 
 export default async function IntegrationsPage() {
   const session = await requireReady();
-  const cards = await Promise.all(INTEGRATION_CATALOG.map(async (item) => {
-    if (item.id === "linkedin" || item.id === "stripe") return { ...item, configured: false, source: "unavailable", error: null as string | null };
-    const resolved = await resolveProvider(session.admin, session.workspaceId, item.id as "openai");
-    return { ...item, configured: resolved.configured, source: resolved.source, error: resolved.row?.last_error ?? null, enabled: resolved.row?.enabled !== false };
-  }));
+  const providers = INTEGRATION_CATALOG.filter((item) => item.id !== "linkedin" && item.id !== "stripe").map((item) => item.id as ProviderKey);
+  const resolved = new Map((await listResolvedProviders(session.admin, session.workspaceId, providers)).map((item) => [item.provider, item]));
+  const cards = INTEGRATION_CATALOG.map((item) => {
+    if (item.id === "linkedin" || item.id === "stripe") return { ...item, configured: false, source: "unavailable", error: null as string | null, enabled: true };
+    const match = resolved.get(item.id as ProviderKey);
+    return { ...item, configured: match?.configured ?? false, source: match?.source ?? "missing", error: match?.row?.last_error ?? null, enabled: match?.row?.enabled !== false };
+  });
   return (
     <div className="space-y-6">
       <PageHeader title="Integrations" description="Secrets are encrypted when a workspace saves them. Full keys are never shown again. Deployment environment keys are shared by every workspace on this server." />

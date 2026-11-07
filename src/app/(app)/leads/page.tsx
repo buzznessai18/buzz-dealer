@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { requireReady } from "@/lib/auth/session";
-import { PageHeader, EmptyState } from "@/components/ui/feedback";
+import { PageHeader, PageLoading, EmptyState } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/card";
 import { addNote, researchLead, setLawfulBasis, updateLead } from "@/server/actions";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { LAWFUL_BASIS_OPTIONS, PIPELINE_STAGES } from "@/lib/constants";
 
 export default function LeadsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading leads…</p>}>
+    <Suspense fallback={<PageLoading label="Loading leads" />}>
       <Leads searchParams={searchParams} />
     </Suspense>
   );

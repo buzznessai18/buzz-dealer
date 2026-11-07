@@ -13,21 +13,17 @@ import { signOut, switchWorkspace } from "@/server/actions";
 
 const ICONS = { LayoutDashboard, Search, Building2, Sparkles, Package, Megaphone, Inbox, KanbanSquare, Bot, CalendarDays, FileText, BarChart3, Plug, Workflow, Settings };
 
-export function AppShell({
-  workspaceName,
-  workspaces,
-  workspaceId,
-  userName,
-  email,
-  children,
-}: {
-  workspaceName: string;
-  workspaces: Array<{ id: string; name: string; role: string }>;
-  workspaceId: string;
-  userName: string;
-  email: string | null;
-  children: React.ReactNode;
-}) {
+export function WorkspaceSwitcher({ workspaceId, workspaceName, workspaces }: { workspaceId: string; workspaceName: string; workspaces: Array<{ id: string; name: string }> }) {
+  return (
+    <form action={async (formData) => { await switchWorkspace(formData); }} className="hidden sm:block">
+      <select name="workspaceId" defaultValue={workspaceId} onChange={(event) => event.currentTarget.form?.requestSubmit()} className="h-10 max-w-48 rounded-md border border-border bg-white px-3 text-sm" aria-label={workspaceName}>
+        {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+      </select>
+    </form>
+  );
+}
+
+export function AppShell({ header, children }: { header: React.ReactNode; children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -54,22 +50,13 @@ export function AppShell({
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <input name="q" placeholder="Search companies, leads, products" className="h-10 w-full rounded-md border border-border bg-muted pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </form>
-          <form action={async (formData) => { await switchWorkspace(formData); }} className="hidden sm:block">
-            <select name="workspaceId" defaultValue={workspaceId} onChange={(event) => event.currentTarget.form?.requestSubmit()} className="h-10 max-w-48 rounded-md border border-border bg-white px-3 text-sm">
-              {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-            </select>
-          </form>
+          {header}
           <button className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" onClick={() => setAssistantOpen(true)}>Assistant</button>
-          <div className="text-right">
-            <p className="text-sm font-medium">{userName || "Member"}</p>
-            <p className="max-w-40 truncate text-xs text-muted-foreground">{email}</p>
-          </div>
           <form action={signOut}><button className="rounded-md px-3 py-2 text-sm hover:bg-muted">Sign out</button></form>
         </header>
         <main className="px-4 py-6 md:px-8">{children}</main>
       </div>
       {assistantOpen ? <Assistant onClose={() => setAssistantOpen(false)} /> : null}
-      <p className="sr-only">{workspaceName}</p>
     </div>
   );
 }

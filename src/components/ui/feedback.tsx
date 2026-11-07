@@ -1,5 +1,17 @@
 import { cn } from "@/lib/utils";
 
+export function PageLoading({ label = "Loading page" }: { label?: string }) {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label={label}>
+      <div className="h-8 w-56 animate-pulse rounded bg-slate-200" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {["a", "b", "c", "d"].map((key) => <div key={key} className="h-24 animate-pulse rounded-lg bg-slate-200" />)}
+      </div>
+      <div className="h-40 animate-pulse rounded-lg bg-slate-200" />
+    </div>
+  );
+}
+
 export function PageHeader({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
